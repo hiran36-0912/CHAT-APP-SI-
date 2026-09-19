@@ -1,0 +1,30 @@
+# Stage 1: Build Frontend
+FROM node:20-alpine AS client-builder
+WORKDIR /app/client
+COPY client/package*.json ./
+RUN npm install
+COPY client/ ./
+RUN npm run build
+
+# Stage 2: Production Server
+FROM node:20-alpine
+WORKDIR /app
+
+# Copy root and server package definitions
+COPY package*.json ./
+COPY server/package*.json ./server/
+RUN npm install --omit=dev --prefix server
+
+# Copy server code
+COPY server/ ./server/
+
+# Copy built frontend assets from stage 1
+COPY --from=client-builder /app/client/dist ./client/dist
+
+# Environment variables
+ENV NODE_ENV=production
+ENV PORT=5000
+
+EXPOSE 5000
+
+CMD ["node", "server/index.js"]
