@@ -15,23 +15,30 @@ export const SocketContextProvider = ({ children }) => {
   const { authUser } = useAuthContext();
 
   useEffect(() => {
-    if (authUser) {
-      const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || (
-        window.location.port === "5173" ? "http://localhost:5000" : "/"
-      );
+    if (authUser && authUser._id) {
+      // Automatically detect server address in dev vs production
+      const isDevFrontend =
+        window.location.port === "5173" || window.location.port === "3000";
+
+      const SOCKET_URL =
+        import.meta.env.VITE_SOCKET_URL ||
+        (isDevFrontend
+          ? `http://${window.location.hostname}:5000`
+          : window.location.origin);
 
       const newSocket = io(SOCKET_URL, {
         query: {
           userId: authUser._id,
         },
         withCredentials: true,
+        transports: ["websocket", "polling"],
       });
 
       setSocket(newSocket);
 
       // Listen for list of online users
       newSocket.on("getOnlineUsers", (users) => {
-        setOnlineUsers(users);
+        setOnlineUsers(users || []);
       });
 
       // Listen for typing events

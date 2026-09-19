@@ -9,35 +9,64 @@ const router = express.Router();
 // SIGNUP
 router.post("/signup", async (req, res) => {
   try {
-    const { fullName, username, email, password } = req.body;
+    let { fullName, username, email, password } = req.body;
 
+    // 1. Check required fields
     if (!fullName || !username || !email || !password) {
       return res.status(400).json({ message: "Please fill in all required fields" });
     }
 
+    fullName = fullName.trim();
+    username = username.trim().toLowerCase();
+    email = email.trim().toLowerCase();
+
+    // 2. Validate Full Name
+    if (fullName.length < 2) {
+      return res.status(400).json({ message: "Full Name must be at least 2 characters long" });
+    }
+
+    // 3. Validate Username format (alphanumeric and underscore, 3-20 characters)
+    const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
+    if (!usernameRegex.test(username)) {
+      return res.status(400).json({
+        message: "Username must be 3-20 characters and contain only letters, numbers, or underscores",
+      });
+    }
+
+    // 4. Validate Email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: "Please enter a valid email address" });
+    }
+
+    // 5. Validate Password length
     if (password.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters" });
+      return res.status(400).json({ message: "Password must be at least 6 characters long" });
     }
 
-    const existingUser = await User.findOne({
-      $or: [{ email: email.toLowerCase() }, { username: username.toLowerCase() }],
-    });
-
-    if (existingUser) {
-      return res.status(400).json({ message: "Username or Email is already taken" });
+    // 6. Check if email is already registered
+    const existingEmail = await User.findOne({ email });
+    if (existingEmail) {
+      return res.status(400).json({ message: "An account with this email address already exists" });
     }
 
-    // Hash password
+    // 7. Check if username is already taken
+    const existingUsername = await User.findOne({ username });
+    if (existingUsername) {
+      return res.status(400).json({ message: "This username is already taken. Please choose another" });
+    }
+
+    // 8. Hash password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Generate avatar using Dicebear API based on username
+    // 9. Generate avatar using Dicebear API based on username
     const profilePic = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(username)}`;
 
     const newUser = new User({
       fullName,
-      username: username.toLowerCase(),
-      email: email.toLowerCase(),
+      username,
+      email,
       password: hashedPassword,
       profilePic,
     });
@@ -53,27 +82,28 @@ router.post("/signup", async (req, res) => {
       email: newUser.email,
       profilePic: newUser.profilePic,
       token,
+      message: "Account created successfully!",
     });
   } catch (error) {
     console.error("Error in signup route:", error.message);
-    res.status(500).json({ message: "Server error during registration" });
+    res.status(500).json({ message: "Server error during registration. Please try again." });
   }
 });
 
 // LOGIN
 router.post("/login", async (req, res) => {
   try {
-    const { usernameOrEmail, password } = req.body;
+    let { usernameOrEmail, password } = req.body;
 
     if (!usernameOrEmail || !password) {
-      return res.status(400).json({ message: "Please provide credentials and password" });
+      return res.status(400).json({ message: "Please provide both username/email and password" });
     }
 
+    usernameOrEmail = usernameOrEmail.trim().toLowerCase();
+
+    // Look for user by either email or username
     const user = await User.findOne({
-      $or: [
-        { email: usernameOrEmail.toLowerCase() },
-        { username: usernameOrEmail.toLowerCase() },
-      ],
+      $or: [{ email: usernameOrEmail }, { username: usernameOrEmail }],
     });
 
     if (!user) {
@@ -94,10 +124,11 @@ router.post("/login", async (req, res) => {
       email: user.email,
       profilePic: user.profilePic,
       token,
+      message: "Logged in successfully!",
     });
   } catch (error) {
     console.error("Error in login route:", error.message);
-    res.status(500).json({ message: "Server error during login" });
+    res.status(500).json({ message: "Server error during login. Please try again." });
   }
 });
 

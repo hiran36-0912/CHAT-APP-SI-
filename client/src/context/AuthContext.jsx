@@ -10,20 +10,31 @@ export const useAuthContext = () => {
 
 export const AuthContextProvider = ({ children }) => {
   const [authUser, setAuthUser] = useState(() => {
-    const saved = localStorage.getItem("chat_user");
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem("chat_user");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
   });
   const [loading, setLoading] = useState(true);
 
-  // Check auth state from backend on initialization
+  // Check auth state on application startup
   useEffect(() => {
     const checkAuth = async () => {
       try {
+        const token = localStorage.getItem("chat_token");
+        if (!token && !localStorage.getItem("chat_user")) {
+          setAuthUser(null);
+          setLoading(false);
+          return;
+        }
+
         const res = await api.get("/auth/me");
         setAuthUser(res.data);
         localStorage.setItem("chat_user", JSON.stringify(res.data));
-      } catch (error) {
-        // Token invalid or expired
+      } catch {
+        // Token invalid, expired, or backend restarted
         localStorage.removeItem("chat_user");
         localStorage.removeItem("chat_token");
         setAuthUser(null);
@@ -32,47 +43,56 @@ export const AuthContextProvider = ({ children }) => {
       }
     };
 
-    if (localStorage.getItem("chat_token") || localStorage.getItem("chat_user")) {
-      checkAuth();
-    } else {
-      setLoading(false);
-    }
+    checkAuth();
   }, []);
 
   const login = async (usernameOrEmail, password) => {
     try {
-      const res = await api.post("/auth/login", { usernameOrEmail, password });
+      const res = await api.post("/auth/login", {
+        usernameOrEmail: usernameOrEmail.trim(),
+        password,
+      });
+
       setAuthUser(res.data);
       localStorage.setItem("chat_user", JSON.stringify(res.data));
       if (res.data.token) {
         localStorage.setItem("chat_token", res.data.token);
       }
+
       toast.success(`Welcome back, ${res.data.fullName}!`);
-      return true;
+      return { success: true };
     } catch (error) {
-      toast.error(error.response?.data?.message || "Login failed");
-      return false;
+      const errorMessage =
+        error.response?.data?.message ||
+        "Login failed. Please check your credentials and try again.";
+      toast.error(errorMessage);
+      return { success: false, message: errorMessage };
     }
   };
 
   const signup = async ({ fullName, username, email, password }) => {
     try {
       const res = await api.post("/auth/signup", {
-        fullName,
-        username,
-        email,
+        fullName: fullName.trim(),
+        username: username.trim().toLowerCase(),
+        email: email.trim().toLowerCase(),
         password,
       });
+
       setAuthUser(res.data);
       localStorage.setItem("chat_user", JSON.stringify(res.data));
       if (res.data.token) {
         localStorage.setItem("chat_token", res.data.token);
       }
+
       toast.success("Account created successfully!");
-      return true;
+      return { success: true };
     } catch (error) {
-      toast.error(error.response?.data?.message || "Registration failed");
-      return false;
+      const errorMessage =
+        error.response?.data?.message ||
+        "Registration failed. Please review your details and try again.";
+      toast.error(errorMessage);
+      return { success: false, message: errorMessage };
     }
   };
 
@@ -80,7 +100,7 @@ export const AuthContextProvider = ({ children }) => {
     try {
       await api.post("/auth/logout");
     } catch (error) {
-      console.error("Logout error", error);
+      console.warn("Logout request completed with warning", error);
     } finally {
       localStorage.removeItem("chat_user");
       localStorage.removeItem("chat_token");
